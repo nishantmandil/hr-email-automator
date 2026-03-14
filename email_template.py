@@ -2,14 +2,9 @@ def get_email_subject():
     return "SRE / DevOps Engineer | 3+ Years Experience"
 
 
-def get_email_body(company):
-    if not company or str(company).strip() == "":
-        greeting = "Hi Hiring Team,"
-    else:
-        greeting = f"Hi {str(company).strip()} Team,"
+def get_email_body(company=None):  # company argument kept so main.py needs no changes
 
-    body = f"""
-{greeting}
+    body = """Hi Hiring Team,
 
 I'm Nishant Mandil, a Site Reliability Engineer at Colt Technology Services, currently focused on improving reliability and automation in large production environments.
 
