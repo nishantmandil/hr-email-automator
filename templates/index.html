@@ -1,0 +1,800 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>HR Email Automator</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg:       #f5f6fa;
+    --surface:  #ffffff;
+    --border:   #e8eaf0;
+    --text:     #1a1d2e;
+    --muted:    #8b90a7;
+    --accent:   #4f6ef7;
+    --accent2:  #7c3aed;
+    --success:  #10b981;
+    --warn:     #f59e0b;
+    --error:    #ef4444;
+    --bounced:  #f97316;
+    --radius:   14px;
+    --shadow:   0 2px 16px rgba(0,0,0,0.06);
+  }
+
+  body {
+    font-family: 'DM Sans', sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+  }
+
+  nav {
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    padding: 0 32px;
+    height: 60px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    position: sticky;
+    top: 0;
+    z-index: 100;
+    box-shadow: 0 1px 8px rgba(0,0,0,0.04);
+  }
+
+  .nav-brand {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-weight: 600;
+    font-size: 15px;
+    color: var(--text);
+  }
+
+  .nav-brand .dot {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    background: var(--accent);
+    animation: pulse 2s infinite;
+  }
+
+  .nav-brand .dot.idle { background: var(--muted); animation: none; }
+
+  @keyframes pulse {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.6; transform: scale(1.3); }
+  }
+
+  .nav-right {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+  }
+
+  .nav-status { font-size: 12px; color: var(--muted); font-family: 'DM Mono', monospace; }
+
+  /* source badge — shows if config loaded from main.py */
+  .source-badge {
+    display: none;
+    align-items: center;
+    gap: 5px;
+    font-size: 11px;
+    font-weight: 500;
+    padding: 3px 10px;
+    border-radius: 99px;
+    background: #eff6ff;
+    color: var(--accent);
+    border: 1px solid #bfdbfe;
+  }
+
+  .source-badge.visible { display: flex; }
+  .source-badge .icon { font-size: 13px; }
+
+  .container {
+    max-width: 1280px;
+    margin: 0 auto;
+    padding: 28px 32px;
+    display: grid;
+    grid-template-columns: 380px 1fr;
+    gap: 24px;
+  }
+
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
+    overflow: hidden;
+  }
+
+  .card-header {
+    padding: 18px 22px 14px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .card-title {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+  }
+
+  .card-body { padding: 20px 22px; }
+
+  .stats-row {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 16px;
+    margin-bottom: 24px;
+    grid-column: 1 / -1;
+  }
+
+  .stat-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 20px 22px;
+    box-shadow: var(--shadow);
+    position: relative;
+    overflow: hidden;
+  }
+
+  .stat-card::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 3px;
+  }
+
+  .stat-card.sent::before    { background: var(--success); }
+  .stat-card.skipped::before { background: var(--warn); }
+  .stat-card.bounced::before { background: var(--bounced); }
+  .stat-card.failed::before  { background: var(--error); }
+
+  .stat-label {
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.07em;
+    color: var(--muted);
+    margin-bottom: 8px;
+  }
+
+  .stat-value {
+    font-size: 36px;
+    font-weight: 600;
+    font-family: 'DM Mono', monospace;
+    line-height: 1;
+    transition: all 0.3s ease;
+  }
+
+  .stat-card.sent .stat-value    { color: var(--success); }
+  .stat-card.skipped .stat-value { color: var(--warn); }
+  .stat-card.bounced .stat-value { color: var(--bounced); }
+  .stat-card.failed .stat-value  { color: var(--error); }
+
+  .stat-sub { font-size: 12px; color: var(--muted); margin-top: 4px; }
+
+  .form-group { margin-bottom: 16px; }
+
+  label {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--muted);
+    margin-bottom: 6px;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+
+  /* small tag next to label showing source */
+  .from-file {
+    font-size: 10px;
+    font-weight: 600;
+    padding: 1px 6px;
+    border-radius: 4px;
+    background: #eff6ff;
+    color: var(--accent);
+    text-transform: none;
+    letter-spacing: 0;
+  }
+
+  .from-manual {
+    font-size: 10px;
+    font-weight: 600;
+    padding: 1px 6px;
+    border-radius: 4px;
+    background: #fef3c7;
+    color: #92400e;
+    text-transform: none;
+    letter-spacing: 0;
+  }
+
+  input, textarea {
+    width: 100%;
+    padding: 10px 13px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    font-family: 'DM Sans', sans-serif;
+    font-size: 14px;
+    color: var(--text);
+    background: var(--bg);
+    transition: border-color 0.2s, box-shadow 0.2s;
+    outline: none;
+  }
+
+  input:focus, textarea:focus {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px rgba(79,110,247,0.1);
+    background: white;
+  }
+
+  /* green tint when pre-filled from file */
+  input.prefilled {
+    background: #f0fdf4;
+    border-color: #bbf7d0;
+  }
+
+  input[type="password"] { font-family: 'DM Mono', monospace; letter-spacing: 2px; }
+
+  textarea { resize: vertical; min-height: 120px; font-size: 13px; line-height: 1.6; }
+
+  .form-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+  }
+
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 7px;
+    padding: 11px 20px;
+    border-radius: 9px;
+    font-family: 'DM Sans', sans-serif;
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+    border: none;
+    transition: all 0.18s ease;
+  }
+
+  .btn-primary {
+    background: var(--accent);
+    color: white;
+    width: 100%;
+    font-size: 15px;
+    padding: 13px;
+  }
+
+  .btn-primary:hover:not(:disabled) {
+    background: #3d5ce5;
+    transform: translateY(-1px);
+    box-shadow: 0 4px 16px rgba(79,110,247,0.35);
+  }
+
+  .btn-danger {
+    background: #fef2f2;
+    color: var(--error);
+    border: 1px solid #fecaca;
+    width: 100%;
+    font-size: 15px;
+    padding: 13px;
+  }
+
+  .btn-danger:hover { background: #fee2e2; }
+  .btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none !important; }
+
+  .progress-wrap { margin-bottom: 16px; }
+
+  .progress-meta {
+    display: flex;
+    justify-content: space-between;
+    font-size: 12px;
+    color: var(--muted);
+    margin-bottom: 6px;
+  }
+
+  .progress-track {
+    height: 6px;
+    background: var(--border);
+    border-radius: 99px;
+    overflow: hidden;
+  }
+
+  .progress-bar {
+    height: 100%;
+    background: linear-gradient(90deg, var(--accent), var(--accent2));
+    border-radius: 99px;
+    transition: width 0.5s ease;
+    width: 0%;
+  }
+
+  .log-console {
+    font-family: 'DM Mono', monospace;
+    font-size: 12px;
+    height: 320px;
+    overflow-y: auto;
+    padding: 14px 16px;
+    background: #0f1117;
+    border-radius: 10px;
+    line-height: 1.7;
+  }
+
+  .log-console::-webkit-scrollbar { width: 4px; }
+  .log-console::-webkit-scrollbar-thumb { background: #333; border-radius: 4px; }
+
+  .log-line { display: flex; gap: 10px; }
+  .log-time    { color: #555; flex-shrink: 0; }
+  .log-info    { color: #94a3b8; }
+  .log-success { color: #34d399; }
+  .log-warn    { color: #fbbf24; }
+  .log-error   { color: #f87171; }
+
+  .table-wrap {
+    overflow-x: auto;
+    max-height: 320px;
+    overflow-y: auto;
+  }
+
+  .table-wrap::-webkit-scrollbar { width: 4px; height: 4px; }
+  .table-wrap::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+
+  thead th {
+    padding: 10px 14px;
+    text-align: left;
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--muted);
+    background: var(--bg);
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    border-bottom: 1px solid var(--border);
+  }
+
+  tbody tr { border-bottom: 1px solid var(--border); transition: background 0.15s; }
+  tbody tr:hover { background: var(--bg); }
+  tbody tr:last-child { border-bottom: none; }
+
+  td {
+    padding: 10px 14px;
+    color: var(--text);
+    max-width: 220px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .badge {
+    display: inline-block;
+    padding: 2px 9px;
+    border-radius: 99px;
+    font-size: 11px;
+    font-weight: 600;
+  }
+
+  .badge-sent    { background: #d1fae5; color: #065f46; }
+  .badge-skipped { background: #fef3c7; color: #92400e; }
+  .badge-bounced { background: #ffedd5; color: #9a3412; }
+  .badge-failed  { background: #fee2e2; color: #991b1b; }
+
+  .empty-state { text-align: center; padding: 40px 20px; color: var(--muted); font-size: 13px; }
+  .empty-state .icon { font-size: 32px; margin-bottom: 8px; }
+
+  .right-col { display: flex; flex-direction: column; gap: 20px; }
+
+  .tab-bar {
+    display: flex;
+    gap: 4px;
+    padding: 4px;
+    background: var(--bg);
+    border-radius: 10px;
+    border: 1px solid var(--border);
+  }
+
+  .tab {
+    flex: 1;
+    padding: 8px 12px;
+    border-radius: 7px;
+    border: none;
+    background: transparent;
+    font-family: 'DM Sans', sans-serif;
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--muted);
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+
+  .tab.active { background: var(--surface); color: var(--text); box-shadow: 0 1px 4px rgba(0,0,0,0.08); }
+  .tab-panel { display: none; }
+  .tab-panel.active { display: block; }
+
+  .btn-sm {
+    padding: 5px 12px;
+    font-size: 12px;
+    border-radius: 6px;
+    border: 1px solid var(--border);
+    background: var(--bg);
+    color: var(--muted);
+    cursor: pointer;
+    font-family: 'DM Sans', sans-serif;
+    transition: all 0.15s;
+  }
+
+  .btn-sm:hover { border-color: var(--accent); color: var(--accent); }
+
+  @media (max-width: 900px) {
+    .container { grid-template-columns: 1fr; }
+    .stats-row { grid-template-columns: repeat(2, 1fr); }
+  }
+</style>
+</head>
+<body>
+
+<nav>
+  <div class="nav-brand">
+    <div class="dot idle" id="navDot"></div>
+    HR Email Automator
+  </div>
+  <div class="nav-right">
+    <div class="source-badge" id="sourceBadge">
+      <span class="icon">📄</span>
+      Config loaded from main.py
+    </div>
+    <div class="nav-status" id="navStatus">Idle — ready to send</div>
+  </div>
+</nav>
+
+<div class="container">
+
+  <!-- STATS -->
+  <div class="stats-row">
+    <div class="stat-card sent">
+      <div class="stat-label">Sent</div>
+      <div class="stat-value" id="statSent">0</div>
+      <div class="stat-sub">delivered</div>
+    </div>
+    <div class="stat-card skipped">
+      <div class="stat-label">Skipped</div>
+      <div class="stat-value" id="statSkipped">0</div>
+      <div class="stat-sub">invalid / empty</div>
+    </div>
+    <div class="stat-card bounced">
+      <div class="stat-label">Bounced</div>
+      <div class="stat-value" id="statBounced">0</div>
+      <div class="stat-sub">address not found</div>
+    </div>
+    <div class="stat-card failed">
+      <div class="stat-label">Failed</div>
+      <div class="stat-value" id="statFailed">0</div>
+      <div class="stat-sub">smtp errors</div>
+    </div>
+  </div>
+
+  <!-- LEFT: CONFIG -->
+  <div>
+    <div class="card">
+      <div class="card-header">
+        <span class="card-title">Configuration</span>
+      </div>
+      <div class="card-body">
+
+        <div class="form-row">
+          <div class="form-group">
+            <label>Gmail Address <span id="tagEmail"></span></label>
+            <input type="email" id="cfgEmail" placeholder="you@gmail.com">
+          </div>
+          <div class="form-group">
+            <label>App Password <span id="tagPassword"></span></label>
+            <input type="password" id="cfgPassword" placeholder="••••••••••••••••">
+          </div>
+        </div>
+
+        <div class="form-row">
+          <div class="form-group">
+            <label>Excel File Path <span id="tagExcel"></span></label>
+            <input type="text" id="cfgExcel" placeholder="hr_emails_scraped.xlsx">
+          </div>
+          <div class="form-group">
+            <label>Resume PDF Path <span id="tagResume"></span></label>
+            <input type="text" id="cfgResume" placeholder="Resume.pdf">
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label>Email Subject</label>
+          <input type="text" id="cfgSubject" value="SRE / DevOps Engineer | 3+ Years Experience">
+        </div>
+
+        <div class="form-group">
+          <label>Email Body</label>
+          <textarea id="cfgBody" rows="8">Hi Hiring Team,
+
+I'm Nishant Mandil, a Site Reliability Engineer at Colt Technology Services, currently focused on improving reliability and automation in large production environments.
+
+In the past few years I've worked on problems like:
+
+- Improving system uptime by 20% through reliability engineering
+- Reducing incident response time by 30% with better monitoring and alerting
+- Building CI/CD pipelines using Jenkins, Docker, and Kubernetes
+- Automating operational workflows using Python and AWS
+
+I'm now looking to apply these skills in a DevOps/SRE role where reliability, automation, and intelligent tooling truly matter.
+
+If your team is working on interesting infrastructure or platform problems, I'd love to connect.
+
+Best regards,
+Nishant Mandil
+📍 Gurugram, India
+📞 +91 8085569375
+📧 nishantmandil105@gmail.com</textarea>
+        </div>
+
+        <div class="progress-wrap" id="progressWrap" style="display:none">
+          <div class="progress-meta">
+            <span id="progressLabel">Processing...</span>
+            <span id="progressPct">0%</span>
+          </div>
+          <div class="progress-track">
+            <div class="progress-bar" id="progressBar"></div>
+          </div>
+        </div>
+
+        <button class="btn btn-primary" id="btnStart" onclick="startJob()">▶ Start Sending</button>
+        <div style="height:10px"></div>
+        <button class="btn btn-danger" id="btnStop" onclick="stopJob()" disabled>◼ Stop</button>
+
+      </div>
+    </div>
+  </div>
+
+  <!-- RIGHT: LOGS + REPORT -->
+  <div class="right-col">
+    <div class="card">
+      <div class="card-header">
+        <div class="tab-bar" style="flex:1">
+          <button class="tab active" onclick="switchTab('logs', this)">Live Logs</button>
+          <button class="tab" onclick="switchTab('report', this)">Report</button>
+        </div>
+        <button class="btn-sm" onclick="refreshReport()" style="margin-left:12px">Refresh</button>
+      </div>
+      <div class="card-body" style="padding:16px">
+
+        <div class="tab-panel active" id="tab-logs">
+          <div class="log-console" id="logConsole">
+            <div class="log-line">
+              <span class="log-time">--:--:--</span>
+              <span class="log-info">Loading config from main.py...</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="tab-panel" id="tab-report">
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Company</th>
+                  <th>Email</th>
+                  <th>Status</th>
+                  <th>Error</th>
+                  <th>Sent At</th>
+                </tr>
+              </thead>
+              <tbody id="reportBody">
+                <tr><td colspan="5">
+                  <div class="empty-state">
+                    <div class="icon">📊</div>
+                    Click Refresh to load report
+                  </div>
+                </td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+  let statsInterval = null;
+  let eventSource = null;
+
+  // ---- LOAD CONFIG FROM main.py ON PAGE LOAD ----
+  async function loadConfig() {
+    try {
+      const res = await fetch('/api/config');
+      const cfg = await res.json();
+
+      let anyLoaded = false;
+
+      function fill(fieldId, tagId, value) {
+        const el = document.getElementById(fieldId);
+        const tag = document.getElementById(tagId);
+        if (value && value.trim() !== '') {
+          el.value = value;
+          el.classList.add('prefilled');
+          tag.innerHTML = '<span class="from-file">from main.py</span>';
+          anyLoaded = true;
+        } else {
+          el.classList.remove('prefilled');
+          tag.innerHTML = '<span class="from-manual">enter manually</span>';
+        }
+      }
+
+      fill('cfgEmail',    'tagEmail',    cfg.email);
+      fill('cfgPassword', 'tagPassword', cfg.password);
+      fill('cfgExcel',    'tagExcel',    cfg.excel);
+      fill('cfgResume',   'tagResume',   cfg.resume);
+
+      // Remove prefilled style when user edits a field manually
+      ['cfgEmail','cfgPassword','cfgExcel','cfgResume'].forEach(id => {
+        document.getElementById(id).addEventListener('input', function() {
+          this.classList.remove('prefilled');
+        });
+      });
+
+      if (anyLoaded) {
+        document.getElementById('sourceBadge').classList.add('visible');
+        appendLog(now(), 'Config loaded from main.py', 'success');
+      } else {
+        appendLog(now(), 'main.py not found — enter config manually', 'warn');
+      }
+
+    } catch (e) {
+      appendLog(now(), 'Could not read config — enter manually', 'warn');
+    }
+  }
+
+  function now() { return new Date().toTimeString().slice(0,8); }
+
+  function switchTab(name, el) {
+    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+    el.classList.add('active');
+    document.getElementById('tab-' + name).classList.add('active');
+    if (name === 'report') refreshReport();
+  }
+
+  function appendLog(time, msg, level) {
+    const con = document.getElementById('logConsole');
+    const line = document.createElement('div');
+    line.className = 'log-line';
+    line.innerHTML = `<span class="log-time">${time}</span><span class="log-${level}">${msg}</span>`;
+    con.appendChild(line);
+    con.scrollTop = con.scrollHeight;
+  }
+
+  function startSSE() {
+    if (eventSource) eventSource.close();
+    eventSource = new EventSource('/api/logs');
+    eventSource.onmessage = (e) => {
+      const data = JSON.parse(e.data);
+      if (data.ping) return;
+      appendLog(data.time, data.msg, data.level);
+    };
+  }
+
+  function startStatsPolling() {
+    statsInterval = setInterval(async () => {
+      const res = await fetch('/api/stats');
+      const data = await res.json();
+
+      document.getElementById('statSent').textContent    = data.sent;
+      document.getElementById('statSkipped').textContent = data.skipped;
+      document.getElementById('statBounced').textContent = data.bounced;
+      document.getElementById('statFailed').textContent  = data.failed;
+
+      if (data.total > 0) {
+        const pct = Math.round((data.current / data.total) * 100);
+        document.getElementById('progressBar').style.width = pct + '%';
+        document.getElementById('progressPct').textContent = pct + '%';
+        document.getElementById('progressLabel').textContent = `Processing ${data.current} of ${data.total}`;
+        document.getElementById('progressWrap').style.display = 'block';
+      }
+
+      if (!data.running) setIdle();
+    }, 1500);
+  }
+
+  function setRunning() {
+    document.getElementById('btnStart').disabled = true;
+    document.getElementById('btnStop').disabled = false;
+    document.getElementById('navDot').classList.remove('idle');
+    document.getElementById('navStatus').textContent = 'Running...';
+  }
+
+  function setIdle() {
+    document.getElementById('btnStart').disabled = false;
+    document.getElementById('btnStop').disabled = true;
+    document.getElementById('navDot').classList.add('idle');
+    document.getElementById('navStatus').textContent = 'Idle — ready to send';
+    if (statsInterval) { clearInterval(statsInterval); statsInterval = null; }
+    if (eventSource)   { eventSource.close(); eventSource = null; }
+  }
+
+  async function startJob() {
+    const config = {
+      email:    document.getElementById('cfgEmail').value.trim(),
+      password: document.getElementById('cfgPassword').value.trim(),
+      excel:    document.getElementById('cfgExcel').value.trim(),
+      resume:   document.getElementById('cfgResume').value.trim(),
+      subject:  document.getElementById('cfgSubject').value.trim(),
+      body:     document.getElementById('cfgBody').value
+    };
+
+    if (!config.email || !config.password || !config.excel) {
+      alert('Please fill in Gmail address, app password, and Excel file path.');
+      return;
+    }
+
+    document.getElementById('logConsole').innerHTML = '';
+    appendLog(now(), 'Job started', 'success');
+
+    const res = await fetch('/api/start', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(config)
+    });
+
+    if (res.ok) {
+      setRunning();
+      startSSE();
+      startStatsPolling();
+    } else {
+      const err = await res.json();
+      alert(err.error || 'Failed to start');
+    }
+  }
+
+  async function stopJob() {
+    await fetch('/api/stop', { method: 'POST' });
+    appendLog(now(), 'Stop requested...', 'warn');
+  }
+
+  async function refreshReport() {
+    const res = await fetch('/api/report');
+    const rows = await res.json();
+    const tbody = document.getElementById('reportBody');
+
+    if (!rows.length) {
+      tbody.innerHTML = `<tr><td colspan="5"><div class="empty-state"><div class="icon">📊</div>No report data yet</div></td></tr>`;
+      return;
+    }
+
+    tbody.innerHTML = rows.reverse().map(r => {
+      const status = (r.Status || '').toLowerCase();
+      return `<tr>
+        <td title="${r['Company Name']}">${r['Company Name'] || '—'}</td>
+        <td title="${r['HR Email']}">${r['HR Email'] || ''}</td>
+        <td><span class="badge badge-${status}">${r.Status || ''}</span></td>
+        <td title="${r.Error}">${r.Error || '—'}</td>
+        <td>${r['Sent At'] || ''}</td>
+      </tr>`;
+    }).join('');
+  }
+
+  // Load config as soon as page opens
+  window.addEventListener('DOMContentLoaded', loadConfig);
+</script>
+</body>
+</html>
