@@ -34,7 +34,7 @@
 │  ░░░░ ◼ Stop          ░░░░ │                                        │
 └────────────────────────────┴────────────────────────────────────────┘
 ```
-![Demo](images/Screenshot 2026-03-14 160638.png)
+![Demo](images/snapshot.png)
 ---
 
 ## 🚀 The Problem This Solves
