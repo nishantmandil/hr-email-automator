@@ -1,26 +1,41 @@
 # 📬 HR Email Automator
 
-> Automated cold outreach tool for job seekers — verifies email addresses via SMTP before sending, attaches resume, and logs every result to Excel.
+> Automated cold outreach tool for job seekers — verifies email addresses before sending, attaches resume, and logs every result to a persistent Excel report.
 
-![Python](https://img.shields.io/badge/Python-3.8+-blue?style=flat-square&logo=python)
+![Python](https://img.shields.io/badge/Python-3.8+-blue?style=flat-square&logo=python&logoColor=white)
+![Gmail](https://img.shields.io/badge/Gmail-SMTP-red?style=flat-square&logo=gmail&logoColor=white)
 ![License](https://img.shields.io/badge/License-MIT-green?style=flat-square)
 ![Status](https://img.shields.io/badge/Status-Active-brightgreen?style=flat-square)
 ![Platform](https://img.shields.io/badge/Platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey?style=flat-square)
 
 ---
 
-## 🚀 What It Does
+## 🚀 What Problem Does This Solve?
 
-Most job seekers send cold emails blindly — many bounce, waste time, and hurt sender reputation.
+Most job seekers send cold emails blindly from a spreadsheet — many bounce, waste time, damage sender reputation, and flood your inbox with **"Address not found"** failure notices.
 
-**HR Email Automator** solves this by:
+**HR Email Automator** fixes this by validating every address before touching Gmail:
 
-- ✅ **Verifying each email address** via SMTP handshake before sending — no bounces
-- 📎 **Attaching your resume** automatically to every email
-- 🧠 **Personalizing each email** with the company name from your Excel sheet
-- ⏱️ **Rate-limiting sends** to avoid Gmail spam detection (45s between emails)
-- 📊 **Logging every result** — Sent / Skipped / Failed — into a clean Excel report
-- 🔁 **Auto-reconnecting** if Gmail drops the SMTP connection mid-run
+| Without This Tool | With This Tool |
+|---|---|
+| Emails sent to dead domains | ❌ Dead domains caught via DNS — skipped instantly |
+| "Address not found" bounces | ❌ Invalid formats rejected before sending |
+| No record of what was sent | ✅ Every action logged to Excel with timestamp |
+| Script crash = lost progress | ✅ Each row saved to disk immediately |
+| Spam-flagged for sending too fast | ✅ 45s rate limit between sends |
+
+---
+
+## ✨ Features
+
+- **3-layer email verification** — format check → fake address check → DNS/MX record check, all without needing port 25
+- **Persistent Excel report** — appends to existing report across multiple runs, never overwrites history
+- **Crash-safe logging** — every result is written to disk instantly, so stopping mid-run loses nothing
+- **Timestamped rows** — know exactly when each email was sent
+- **Auto-reconnect** — reconnects to Gmail automatically if SMTP drops mid-run
+- **Rate limiting** — 45-second delay between sends to avoid Gmail spam detection
+- **Resume attachment** — PDF attached automatically to every outgoing email
+- **Two-file architecture** — email content lives in `email_template.py`, logic stays untouched in `main.py`
 
 ---
 
@@ -29,11 +44,11 @@ Most job seekers send cold emails blindly — many bounce, waste time, and hurt 
 ```
 hr-email-automator/
 │
-├── main.py               # Core automation logic
-├── email_template.py     # Email subject + body (edit this to change your message)
-├── all_hr_emails.xlsx  # Input: list of HR emails + company names
-├── Nishant_SRE_Resume.pdf  # Your resume (replace with your own)
-└── email_report.xlsx     # Output: auto-generated after run
+├── main.py                  # Core automation + verification logic
+├── email_template.py        # Email subject + body (only file you edit for content)
+├── all_hr_emails.xlsx       # Input: HR email list with Company Name + HR Email columns
+├── Nishant_SRE_Resume.pdf   # Resume attached to every email
+└── email_report.xlsx        # Auto-generated output report (appends across runs)
 ```
 
 ---
@@ -55,31 +70,34 @@ pip install dnspython pandas openpyxl
 
 ### 3. Prepare your Excel file
 
-Your `all_hr_emails.xlsx` must have these two columns:
+Your input file must have exactly these two columns:
 
-| Company Name | HR Email              |
-|--------------|-----------------------|
-| Google       | hr@google.com         |
-| Razorpay     | talent@razorpay.com   |
+| Company Name | HR Email |
+|---|---|
+| Google | hr@google.com |
+| Razorpay | talent@razorpay.com |
+| | careers@infosys.com |
+
+> Blank company names are handled gracefully — email still sends with a generic greeting.
 
 ### 4. Add your resume
 
-Place your resume PDF in the root folder and update this line in `main.py`:
+Place your resume PDF in the root folder and update `main.py`:
 
 ```python
-resume_path = "Your_Resume.pdf"
+resume_path = "Your_Name_Resume.pdf"
 ```
 
-### 5. Configure your Gmail credentials
+### 5. Set your Gmail credentials
 
-In `main.py`, update:
+In `main.py`:
 
 ```python
 EMAIL = "your_email@gmail.com"
-PASSWORD = "your_app_password"   # Use Gmail App Password, not your actual password
+PASSWORD = "your_app_password"
 ```
 
-> ⚠️ **Important:** Use a [Gmail App Password](https://support.google.com/accounts/answer/185833), not your real Gmail password. Enable 2FA on your account first.
+> ⚠️ Use a [Gmail App Password](https://support.google.com/accounts/answer/185833), **not** your real Gmail password. Requires 2FA enabled on your account.
 
 ---
 
@@ -91,80 +109,96 @@ python main.py
 
 ---
 
-## 🔍 How Email Verification Works
+## 🔍 How Verification Works
 
-Before sending any email, the tool performs a silent **SMTP handshake**:
+Before any email is sent, three checks run in sequence:
 
 ```
-1. Resolve MX record for the email's domain
-2. Open SMTP connection to the mail server (port 25)
-3. Issue RCPT TO command
-4. If server returns 250 OK → send the email
-   If server returns 550/551/553 → skip silently (no sleep, no send)
+Email Address
+     │
+     ▼
+┌─────────────────────────┐
+│  1. Format Check        │  regex — catches malformed addresses like abc@ or @gmail
+│     (regex)             │
+└────────────┬────────────┘
+             │ pass
+             ▼
+┌─────────────────────────┐
+│  2. Fake Address Check  │  blocks noreply@, test@, admin@, info@, etc.
+│     (blocklist)         │
+└────────────┬────────────┘
+             │ pass
+             ▼
+┌─────────────────────────┐
+│  3. MX Record Check     │  DNS lookup — confirms domain can receive email
+│     (DNS only)          │  works without port 25, never blocked by ISP
+└────────────┬────────────┘
+             │ pass
+             ▼
+        ✅ Send Email
 ```
 
-This happens **without sending any actual email** — it's just a connection check.
-
-| Scenario | Action |
-|----------|--------|
-| SMTP returns 250 OK | ✅ Send email + wait 45s |
-| SMTP returns 550 (not found) | ⏭️ Skip instantly, no sleep |
-| Port 25 blocked / timeout | ✅ Assume valid, send anyway |
-| Empty email cell in Excel | ⏭️ Skip with log entry |
-| Gmail drops connection mid-run | 🔁 Auto-reconnect and continue |
+**Why DNS-only and not SMTP port 25?**
+Port 25 is blocked by most ISPs in India and corporate networks. Earlier versions of this tool used SMTP handshake verification — every check timed out and fell back to "assume valid", causing bounce emails. The current approach uses DNS MX record lookups (port 53) which are never blocked and reliably confirm whether a domain can receive email at all.
 
 ---
 
 ## 📊 Output Report
 
-After the run, `email_report.xlsx` is generated automatically:
+`email_report.xlsx` is created on first run and **appended on every subsequent run** — it grows into a complete outreach history:
 
-| Company Name | HR Email           | Status  | Error                        |
-|--------------|--------------------|---------|------------------------------|
-| Google       | hr@google.com      | Sent    |                              |
-| Razorpay     | bad@fake.com       | Skipped | Address not found / SMTP rejected |
-| Infosys      | talent@infosys.com | Failed  | SMTPRecipientsRefused        |
+| Company Name | HR Email | Status | Error | Sent At |
+|---|---|---|---|---|
+| Google | hr@google.com | Sent | | 2025-03-14 10:22:01 |
+| Razorpay | bad@nodomain.xyz | Skipped | Domain has no MX record | 2025-03-14 10:22:03 |
+| Infosys | noreply@infosys.com | Skipped | Generic/placeholder email address | 2025-03-14 10:22:04 |
+| EY | invalid-email | Skipped | Invalid email format | 2025-03-14 10:22:04 |
+| Colt | talent@colt.net | Sent | | 2025-03-15 09:10:44 |
+
+> Script stopped mid-run? Every row processed before the stop is already saved. Resume from where you left off next run.
 
 ---
 
 ## ✏️ Customizing Your Email
 
-All email content lives in `email_template.py` — you never need to touch `main.py` for content changes.
+All content lives in `email_template.py` — change subject or body without touching any logic:
 
 ```python
-# email_template.py
-
 def get_email_subject():
-    return "Your Custom Subject Line"
+    return "Your Custom Subject Line Here"
 
-def get_email_body(company):
-    # greeting is auto-personalized from Excel
-    ...
+def get_email_body(company=None):
+    body = """Hi Hiring Team,
+
+Your email content here...
+"""
     return body
 ```
 
-Just edit `email_template.py` and re-run. The logic in `main.py` stays untouched.
+`main.py` never needs to change for content updates.
 
 ---
 
 ## 🛡️ Responsible Usage
 
-- This tool is built for **personal job outreach only**
-- Always respect the recipient's privacy
-- Do not use for spam or bulk unsolicited marketing
-- Gmail has daily sending limits (~500 emails/day for regular accounts)
+- Built for **personal job outreach only**
+- Respects Gmail's sending limits (~500 emails/day for regular accounts)
+- 45-second delay between sends prevents spam flagging
+- Do not use for bulk unsolicited marketing or spam
 
 ---
 
 ## 🧰 Tech Stack
 
-| Tool | Purpose |
-|------|---------|
-| `smtplib` | Sending emails + SMTP verification |
-| `dnspython` | Resolving MX records for email domains |
+| Library | Purpose |
+|---|---|
+| `smtplib` | Gmail SMTP login and sending |
+| `dns.resolver` | MX record lookups for domain verification |
+| `re` | Email format validation via regex |
 | `pandas` | Reading Excel input, writing report |
 | `openpyxl` | Excel file engine for pandas |
-| `email.message` | Building MIME emails with attachments |
+| `email.message` | Building MIME emails with PDF attachment |
+| `os` + `datetime` | Report file management + timestamps |
 
 ---
 
@@ -175,7 +209,7 @@ Site Reliability Engineer @ Colt Technology Services
 
 [![LinkedIn](https://img.shields.io/badge/LinkedIn-Connect-blue?style=flat-square&logo=linkedin)](https://www.linkedin.com/in/nishant-mandil-07b165159/)
 [![GitHub](https://img.shields.io/badge/GitHub-Follow-black?style=flat-square&logo=github)](https://github.com/nishantmandil)
-[![Portfolio](https://img.shields.io/badge/Portfolio-Visit-orange?style=flat-square)](https://portfolio.taurbykaur.co.in/)
+[![Portfolio](https://img.shields.io/badge/Portfolio-Visit-orange?style=flat-square&logo=safari)](https://portfolio.taurbykaur.co.in/)
 
 ---
 
