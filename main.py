@@ -1,5 +1,7 @@
 import pandas as pd
 import smtplib
+import imaplib
+import email as email_lib
 import re
 import os
 import dns.resolver
@@ -12,12 +14,12 @@ import time
 # CONFIG
 # -----------------------
 
-EMAIL = ""       # Your Gmail Address Here
-PASSWORD = ""    # Your App Password Here
+EMAIL = "" # Use your Gmail address here (app password must be set up for this to work)
+PASSWORD = "" # Use an app password generated from your Google Account security settings.
 
-resume_path = "Nishant_SRE_Resume.pdf"   # Place resume PDF in same directory
-excel_file = "Book 2.xlsx"         # Excel file with "Company Name" and "HR Email" columns
-report_file = "email_report.xlsx"
+resume_path = "Nishant_SRE_Resume.pdf" # Make sure the resume file is in the same directory as this script, or provide the correct path.
+excel_file = "all_hr_emails.xlsx" # This Excel file should have columns "Company Name" and "HR Email" with the relevant data.
+report_file = "email_report.xlsx" # This will be created/updated with results as the script runs.
 
 # -----------------------
 # REPORT HELPER
@@ -38,6 +40,82 @@ def save_single_result(result):
         combined_df.to_excel(report_file, index=False)
     else:
         new_row.to_excel(report_file, index=False)
+
+
+def update_last_result(sent_email, new_status, new_error):
+    """
+    Updates the most recent row for a given email in the report.
+    Used to change 'Sent' to 'Bounced' after bounce is detected.
+    """
+    if not os.path.exists(report_file):
+        return
+
+    df = pd.read_excel(report_file)
+
+    # Find the last row matching this email
+    mask = df["HR Email"] == sent_email
+    if mask.any():
+        last_index = df[mask].index[-1]
+        df.at[last_index, "Status"] = new_status
+        df.at[last_index, "Error"] = new_error
+        df.to_excel(report_file, index=False)
+        print(f"  ↳ Report updated — marked {sent_email} as {new_status} ⚠️")
+
+# -----------------------
+# BOUNCE CHECKER
+# -----------------------
+
+def check_bounce_replies(mail_user, mail_password, sent_email):
+    """
+    Connects to Gmail via IMAP during the 45s sleep window.
+    Looks for unread bounce/failure emails from mailer-daemon
+    that mention the address we just sent to.
+    Returns True if a bounce was detected.
+    """
+    try:
+        mail = imaplib.IMAP4_SSL("imap.gmail.com")
+        mail.login(mail_user, mail_password)
+        mail.select("inbox")
+
+        # Search for unread emails from mailer-daemon
+        status, messages = mail.search(None, '(UNSEEN FROM "mailer-daemon@googlemail.com")')
+
+        if status != "OK" or not messages[0]:
+            mail.logout()
+            return False
+
+        bounce_found = False
+
+        for msg_id in messages[0].split():
+            status, msg_data = mail.fetch(msg_id, "(RFC822)")
+            if status != "OK":
+                continue
+
+            raw = msg_data[0][1]
+            msg = email_lib.message_from_bytes(raw)
+
+            # Extract full body text
+            body = ""
+            if msg.is_multipart():
+                for part in msg.walk():
+                    if part.get_content_type() == "text/plain":
+                        body += part.get_payload(decode=True).decode(errors="ignore")
+            else:
+                body = msg.get_payload(decode=True).decode(errors="ignore")
+
+            # Check if bounce mentions our sent email address
+            if sent_email.lower() in body.lower():
+                print(f"  ↳ Bounce detected for {sent_email} in inbox ⚠️")
+                mail.store(msg_id, "+FLAGS", "\\Seen")  # Mark as read
+                bounce_found = True
+                break
+
+        mail.logout()
+        return bounce_found
+
+    except Exception as e:
+        print(f"  ↳ IMAP bounce check failed ({type(e).__name__}: {e}) — skipping check")
+        return False
 
 # -----------------------
 # EMAIL VERIFICATION
@@ -66,16 +144,16 @@ def smtp_verify_email(email, sender_email):
             print(f"  ↳ MX record found for '{domain}' ✅")
         except dns.resolver.NXDOMAIN:
             print(f"  ↳ Domain '{domain}' does not exist ❌")
-            return False  # Hard fail — domain is completely fake
+            return False
         except dns.resolver.NoAnswer:
             print(f"  ↳ Domain '{domain}' has no MX records ❌")
-            return False  # Hard fail — domain can't receive email
+            return False
         except dns.resolver.Timeout:
             print(f"  ↳ DNS timeout for '{domain}' — assuming valid ⚠️")
-            return True   # Soft fail — don't skip on timeout
+            return True
         except Exception as e:
             print(f"  ↳ DNS error for '{domain}': {e} — assuming valid ⚠️")
-            return True   # Soft fail — unknown DNS error
+            return True
 
         # --- SMTP handshake on port 25 (best effort) ---
         try:
@@ -93,7 +171,7 @@ def smtp_verify_email(email, sender_email):
 
         except smtplib.SMTPConnectError:
             print(f"  ↳ Port 25 blocked — relying on MX check only ⚠️")
-            return True   # MX was valid, port just blocked
+            return True
         except smtplib.SMTPServerDisconnected:
             print(f"  ↳ SMTP disconnected during check — relying on MX check only ⚠️")
             return True
@@ -102,7 +180,7 @@ def smtp_verify_email(email, sender_email):
             return True
         except Exception as e:
             print(f"  ↳ SMTP check failed ({type(e).__name__}: {e}) — relying on MX check only ⚠️")
-            return True   # MX was valid, SMTP just unreachable
+            return True
 
     except Exception as e:
         print(f"  ↳ Verification failed ({type(e).__name__}: {e}) — assuming valid ⚠️")
@@ -149,7 +227,7 @@ for index, row in df.iterrows():
                 "Error": "Empty email address"
             }
             results.append(entry)
-            save_single_result(entry)  # ← save immediately
+            save_single_result(entry)
             continue
 
         email = str(email).strip()
@@ -170,17 +248,12 @@ for index, row in df.iterrows():
                 "Error": "Address not found / SMTP rejected"
             }
             results.append(entry)
-            save_single_result(entry)  # ← save immediately
+            save_single_result(entry)
             continue
 
         # -----------------------
         # BUILD EMAIL
         # -----------------------
-
-        if pd.isna(company) or str(company).strip() == "":
-            greeting = "Hi Hiring Team,"
-        else:
-            greeting = f"Hi {str(company).strip()} Team,"
 
         msg = EmailMessage()
         msg["Subject"] = get_email_subject()
@@ -201,7 +274,7 @@ for index, row in df.iterrows():
         # -----------------------
 
         server.send_message(msg)
-        print(f"  ↳ Sent to {email} ✅\n")
+        print(f"  ↳ Sent to {email} ✅")
 
         entry = {
             "Company Name": company,
@@ -210,9 +283,27 @@ for index, row in df.iterrows():
             "Error": ""
         }
         results.append(entry)
-        save_single_result(entry)  # ← save immediately
+        save_single_result(entry)  # ← save as Sent immediately
 
-        time.sleep(45)  # Sleep only after successful send
+        # -----------------------
+        # SLEEP + BOUNCE CHECK
+        # -----------------------
+
+        print(f"  ↳ Waiting 45s and checking inbox for bounce replies...")
+        time.sleep(45)
+
+        bounce_detected = check_bounce_replies(EMAIL, PASSWORD, email)
+
+        if bounce_detected:
+            # Update the report row from Sent → Bounced
+            update_last_result(
+                sent_email=email,
+                new_status="Bounced",
+                new_error="Address not found — bounce received from mailer-daemon"
+            )
+            print()
+        else:
+            print(f"  ↳ No bounce detected ✅\n")
 
     except smtplib.SMTPRecipientsRefused:
         print(f"  ↳ Recipient refused by Gmail: {email} (no sleep)\n")
@@ -223,7 +314,7 @@ for index, row in df.iterrows():
             "Error": "SMTPRecipientsRefused — address rejected by Gmail"
         }
         results.append(entry)
-        save_single_result(entry)  # ← save immediately
+        save_single_result(entry)
 
     except smtplib.SMTPServerDisconnected:
         print(f"  ↳ SMTP server disconnected. Reconnecting...\n")
@@ -241,7 +332,7 @@ for index, row in df.iterrows():
             "Error": "SMTPServerDisconnected — reconnected, retry manually"
         }
         results.append(entry)
-        save_single_result(entry)  # ← save immediately
+        save_single_result(entry)
 
     except Exception as e:
         print(f"  ↳ Failed for {email}: {type(e).__name__}: {e}\n")
@@ -252,7 +343,7 @@ for index, row in df.iterrows():
             "Error": f"{type(e).__name__}: {str(e)}"
         }
         results.append(entry)
-        save_single_result(entry)  # ← save immediately
+        save_single_result(entry)
 
 # -----------------------
 # CLOSE SERVER
