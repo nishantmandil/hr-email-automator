@@ -31,7 +31,7 @@ hr-email-automator/
 │
 ├── main.py               # Core automation logic
 ├── email_template.py     # Email subject + body (edit this to change your message)
-├── hr_emails_scraped.xlsx  # Input: list of HR emails + company names
+├── all_hr_emails.xlsx  # Input: list of HR emails + company names
 ├── Nishant_SRE_Resume.pdf  # Your resume (replace with your own)
 └── email_report.xlsx     # Output: auto-generated after run
 ```
@@ -55,7 +55,7 @@ pip install dnspython pandas openpyxl
 
 ### 3. Prepare your Excel file
 
-Your `hr_emails_scraped.xlsx` must have these two columns:
+Your `all_hr_emails.xlsx` must have these two columns:
 
 | Company Name | HR Email              |
 |--------------|-----------------------|
